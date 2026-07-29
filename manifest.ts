@@ -13,5 +13,11 @@ export default Manifest({
   icon: "assets/default_new_app_icon.png",
   functions: [BuildSchedulingLinkDefinition],
   outgoingDomains: [],
-  botScopes: [],
+  // Slack requires at least one bot scope whenever a bot user exists (every
+  // Deno SDK app has one automatically) - this function never calls the
+  // Slack API at all, so this exists purely to satisfy that requirement.
+  // Deliberately the lowest-risk scope available (Amazon's internal risk
+  // tiering rates this "1 - Low") - "commands" (rated "2 - Medium") was
+  // denied at the org-level install approval step.
+  botScopes: ["app_mentions:read"],
 });

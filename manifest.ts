@@ -13,7 +13,5 @@ export default Manifest({
   icon: "assets/default_new_app_icon.png",
   functions: [BuildSchedulingLinkDefinition],
   outgoingDomains: [],
-  botScopes: [
-    "commands",
-  ],
+  botScopes: [],
 });

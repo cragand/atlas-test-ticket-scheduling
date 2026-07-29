@@ -89,10 +89,10 @@ const STATION_CALENDARS: Record<string, string> = {
 // workcells_needed value when station is 0301 (not a real workcell
 // selection), so neither should resolve to an additional calendar.
 const WORKCELL_CALENDARS: Record<string, string> = {
-  "Induct": "atlas-stow-beta-0305@amazon.com",
-  "WC1": "atlas-stow-beta-0306@amazon.com",
-  "WC2": "atlas-stow-beta-0307@amazon.com",
-  "WC3": "atlas-stow-beta-0308@amazon.com",
+  "Induct": "atlas-stow-beta-0305-induct-transfer@amazon.com",
+  "WC1": "atlas-stow-beta-0306-WC1@amazon.com",
+  "WC2": "atlas-stow-beta-0307-WC2@amazon.com",
+  "WC3": "atlas-stow-beta-0308-WC3@amazon.com",
 };
 
 // Matches case-insensitively (and trims whitespace), same reasoning as the

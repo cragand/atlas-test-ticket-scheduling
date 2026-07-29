@@ -42,7 +42,7 @@ Deno.test("resolveCalendars: 0304 with one specific workcell adds that calendar 
   assertEquals(result, {
     calendars: [
       "atlas-stow-beta-0304@amazon.com",
-      "atlas-stow-beta-0305@amazon.com",
+      "atlas-stow-beta-0305-induct-transfer@amazon.com",
     ],
   });
 });
@@ -52,8 +52,8 @@ Deno.test("resolveCalendars: 0304 with multiple specific workcells adds all of t
   assertEquals(result, {
     calendars: [
       "atlas-stow-beta-0304@amazon.com",
-      "atlas-stow-beta-0306@amazon.com",
-      "atlas-stow-beta-0307@amazon.com",
+      "atlas-stow-beta-0306-WC1@amazon.com",
+      "atlas-stow-beta-0307-WC2@amazon.com",
     ],
   });
 });
@@ -63,7 +63,7 @@ Deno.test("resolveCalendars: matches station case-insensitively (regression patt
   assertEquals(result, {
     calendars: [
       "atlas-stow-beta-0304@amazon.com",
-      "atlas-stow-beta-0305@amazon.com",
+      "atlas-stow-beta-0305-induct-transfer@amazon.com",
     ],
   });
 });
@@ -90,7 +90,7 @@ Deno.test("buildSchedulingUrl includes all resolved calendars in participantsByP
   assertStringIncludes(
     url,
     encodeURIComponent(
-      "atlas-stow-beta-0304@amazon.com,atlas-stow-beta-0306@amazon.com",
+      "atlas-stow-beta-0304@amazon.com,atlas-stow-beta-0306-WC1@amazon.com",
     ),
   );
 });

@@ -1,198 +1,104 @@
-# Deno Starter Template
+# Atlas Test Ticket Scheduling
 
-This is a scaffolded Deno template used to build out Slack apps using the Slack
-CLI.
+A Bolt for JavaScript custom step for the existing "Atlas Test Ticket
+Submission" Workflow Builder workflow at Amazon. It replaces that workflow's
+native, hardcoded two-station scheduling-link construction with support for
+all 5 real workcell/induct calendars.
 
-**Guide Outline**:
+## Why Bolt, not the Deno SDK (next-gen platform)
 
-- [Setup](#setup)
-  - [Install the Slack CLI](#install-the-slack-cli)
-  - [Clone the Template](#clone-the-template)
-- [Running Your Project Locally](#running-your-project-locally)
-- [Creating Triggers](#creating-triggers)
-- [Datastores](#datastores)
-- [Testing](#testing)
-- [Deploying Your App](#deploying-your-app)
-- [Viewing Activity Logs](#viewing-activity-logs)
-- [Project Structure](#project-structure)
-- [Resources](#resources)
+This project originally used Slack's Deno SDK / next-gen platform (the same
+architecture as Emtech's own `create_calendar_event` app) — Slack-hosted, no
+infrastructure to manage. That version is preserved on the
+[`deno-sdk-archived`](../../tree/deno-sdk-archived) branch for reference.
 
----
+It had to be abandoned: Amazon's Slack grid **blocks next-gen apps
+outright**, confirmed directly by an app-approval denial —
+`Next-gen apps are currently blocked on the Amazon grid.` No scope or
+manifest change could have worked around this; it's a platform-level
+restriction, not a configuration issue.
 
-## Setup
+Amazon's supported path is classic Slack apps (Bolt), self-hosted via
+**Socket Mode** rather than Slack-hosted infrastructure — which is also
+exactly what was originally suggested before the Deno SDK path was tried, and
+turned out to be the only route that actually works here.
 
-Before getting started, first make sure you have a development workspace where
-you have permission to install apps. **Please note that the features in this
-project require that the workspace be part of
-[a Slack paid plan](https://slack.com/pricing).**
+## What ported over unchanged
 
-### Install the Slack CLI
+The actual business logic — the station/workcell calendar lookup table, the
+branching rules (0301 standalone vs. 0304 + its 4 workcell calendars), the
+scheduling URL construction — has zero Deno-specific dependencies, so it
+ported over as plain TypeScript with no changes. See
+`src/build_scheduling_link.ts` and its test file for the full logic and
+test coverage (13 tests).
 
-To use this template, you need to install and configure the Slack CLI.
-Step-by-step instructions can be found in our
-[Quickstart Guide](https://api.slack.com/automation/quickstart).
+Only the Slack-integration layer changed: `DefineFunction`/`SlackFunction`
+(Deno SDK) became `manifest.json` + `app.function()` (Bolt).
 
-### Clone the Template
+## Calendar lookup
 
-Start by cloning this repository:
+| Station/workcell | Calendar |
+| --- | --- |
+| 0301 (standalone system) | `atlas-stow-beta-0301@amazon.com` |
+| 0304 (overall system) | `atlas-stow-beta-0304@amazon.com` |
+| Induct | `atlas-stow-beta-0305-induct-transfer@amazon.com` |
+| WC1 | `atlas-stow-beta-0306-WC1@amazon.com` |
+| WC2 | `atlas-stow-beta-0307-WC2@amazon.com` |
+| WC3 | `atlas-stow-beta-0308-WC3@amazon.com` |
 
-```zsh
-# Clone this project onto your machine
-$ slack create my-app -t slack-samples/deno-starter-template
+- **0301**: uses only its own calendar — the "Which workcells do you need?"
+  form field is irrelevant for this station (0301 has no individual
+  workcells).
+- **0304**: always includes the 0304 overall calendar, **plus** the specific
+  calendar for any of Induct/WC1/WC2/WC3 named in "Which workcells do you
+  need?" (multiple can be selected at once). `Any 1 WC` and `1:1` add nothing
+  extra — `Any 1 WC` means operators self-coordinate and add their own
+  workcell calendar manually.
 
-# Change into the project directory
-$ cd my-app
+## Known open item
+
+The multiple-calendar delimiter in `participantsByPriority` is a comma —
+the most common web convention, but **not yet confirmed against the real
+`meetings.amazon.com` tool**. Needs a live test with 2+ calendars before
+fully trusting it.
+
+## Running locally
+
+```sh
+npm install
+cp .env.example .env   # fill in real SLACK_BOT_TOKEN / SLACK_APP_TOKEN
+npm run dev
 ```
-
-## Running Your Project Locally
-
-While building your app, you can see your changes appear in your workspace in
-real-time with `slack run`. You'll know an app is the development version if the
-name has the string `(local)` appended.
-
-```zsh
-# Run app locally
-$ slack run
-
-Connected, awaiting events
-```
-
-To stop running locally, press `<CTRL> + C` to end the process.
-
-## Creating Triggers
-
-[Triggers](https://api.slack.com/automation/triggers) are what cause workflows
-to run. These triggers can be invoked by a user, or automatically as a response
-to an event within Slack.
-
-When you `run` or `deploy` your project for the first time, the CLI will prompt
-you to create a trigger if one is found in the `triggers/` directory. For any
-subsequent triggers added to the application, each must be
-[manually added using the `trigger create` command](#manual-trigger-creation).
-
-When creating triggers, you must select the workspace and environment that you'd
-like to create the trigger in. Each workspace can have a local development
-version (denoted by `(local)`), as well as a deployed version. _Triggers created
-in a local environment will only be available to use when running the
-application locally._
-
-### Link Triggers
-
-A [link trigger](https://api.slack.com/automation/triggers/link) is a type of
-trigger that generates a **Shortcut URL** which, when posted in a channel or
-added as a bookmark, becomes a link. When clicked, the link trigger will run the
-associated workflow.
-
-Link triggers are _unique to each installed version of your app_. This means
-that Shortcut URLs will be different across each workspace, as well as between
-[locally run](#running-your-project-locally) and
-[deployed apps](#deploying-your-app).
-
-With link triggers, after selecting a workspace and environment, the output
-provided will include a Shortcut URL. Copy and paste this URL into a channel as
-a message, or add it as a bookmark in a channel of the workspace you selected.
-Interacting with this link will run the associated workflow.
-
-**Note: triggers won't run the workflow unless the app is either running locally
-or deployed!**
-
-### Manual Trigger Creation
-
-To manually create a trigger, use the following command:
-
-```zsh
-$ slack trigger create --trigger-def triggers/sample_trigger.ts
-```
-
-## Datastores
-
-For storing data related to your app, datastores offer secure storage on Slack
-infrastructure. For an example of a datastore, see
-`datastores/sample_datastore.ts`. The use of a datastore requires the
-`datastore:write`/`datastore:read` scopes to be present in your manifest.
 
 ## Testing
 
-For an example of how to test a function, see
-`functions/sample_function_test.ts`. Test filenames should be suffixed with
-`_test`.
-
-Run all tests with `deno test`:
-
-```zsh
-$ deno test
+```sh
+npm test
 ```
 
-## Deploying Your App
+## Building for deployment
 
-Once development is complete, deploy the app to Slack infrastructure using
-`slack deploy`:
-
-```zsh
-$ slack deploy
+```sh
+npm run build   # compiles to dist/
+npm start        # runs the compiled output
 ```
 
-When deploying for the first time, you'll be prompted to
-[create a new link trigger](#creating-triggers) for the deployed version of your
-app. When that trigger is invoked, the workflow should run just as it did when
-developing locally (but without requiring your server to be running).
+## Deployment (self-hosted, Socket Mode)
 
-## Viewing Activity Logs
+Runs as a persistent process — not Slack-hosted. See project notes for the
+AWS hosting plan (ECS/Fargate recommended over EC2 or Lambda — Socket Mode
+needs a long-lived connection, which Lambda's execution model doesn't fit;
+Fargate avoids the OS-patching overhead EC2 would add). Secrets
+(`SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`) belong in AWS Secrets Manager or SSM
+Parameter Store, never hardcoded or committed.
 
-Activity logs of your application can be viewed live and as they occur with the
-following command:
+## App approval at Amazon
 
-```zsh
-$ slack activity --tail
-```
-
-## Project Structure
-
-### `.slack/`
-
-Contains `apps.dev.json` and `apps.json`, which include installation details for
-development and deployed apps.
-
-Contains `hooks.json` used by the CLI to interact with the project's SDK
-dependencies. It contains script hooks that are executed by the CLI and
-implemented by the SDK.
-
-### `datastores/`
-
-[Datastores](https://api.slack.com/automation/datastores) securely store data
-for your application on Slack infrastructure. Required scopes to use datastores
-include `datastore:write` and `datastore:read`.
-
-### `functions/`
-
-[Functions](https://api.slack.com/automation/functions) are reusable building
-blocks of automation that accept inputs, perform calculations, and provide
-outputs. Functions can be used independently or as steps in workflows.
-
-### `triggers/`
-
-[Triggers](https://api.slack.com/automation/triggers) determine when workflows
-are run. A trigger file describes the scenario in which a workflow should be
-run, such as a user pressing a button or when a specific event occurs.
-
-### `workflows/`
-
-A [workflow](https://api.slack.com/automation/workflows) is a set of steps
-(functions) that are executed in order.
-
-Workflows can be configured to run without user input or they can collect input
-by beginning with a [form](https://api.slack.com/automation/forms) before
-continuing to the next step.
-
-### `manifest.ts`
-
-The [app manifest](https://api.slack.com/automation/manifest) contains the app's
-configuration. This file defines attributes like app name and description.
-
-## Resources
-
-To learn more about developing automations on Slack, visit the following:
-
-- [Automation Overview](https://api.slack.com/automation)
-- [CLI Quick Reference](https://api.slack.com/automation/cli/quick-reference)
-- [Samples and Templates](https://api.slack.com/automation/samples)
+Went through Amazon's OPUS Apps Approval Process (OPAA). One real finding
+from that process: the `commands` scope (rated "2 - Medium" in Amazon's
+internal risk table) was denied at the org-level install step, despite
+documented policy suggesting only High-risk scopes require review in
+practice. Switched to `app_mentions:read` (rated "1 - Low") instead, since
+this function doesn't functionally use the Slack API at all — any scope
+choice is just satisfying Slack's "a bot user needs at least one scope"
+requirement, so the lowest-risk one available is the right pick.

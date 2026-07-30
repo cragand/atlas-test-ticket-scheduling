@@ -1,8 +1,4 @@
+node_modules
 dist
-package
-.DS_Store
-
-# Exported Slack workflow JSON - contains internal Amazon channel/List/Canvas
-# IDs and meeting links; used locally only, never pushed.
-*.json.local
-Atlas Test Ticket Submission*.json
+.env
+*.log

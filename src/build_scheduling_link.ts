@@ -1,78 +1,17 @@
-import { DefineFunction, Schema, SlackFunction } from "deno-slack-sdk/mod.ts";
-
 /**
  * Builds the meetings.amazon.com scheduling link used in the Atlas Test
  * Ticket Submission workflow's Canvas (the "Outlook Scheduling Link"),
  * replacing the native string-building step that only supported two
- * hardcoded stations. Pure computation — no external network calls, no
+ * hardcoded stations. Pure computation - no external network calls, no
  * Slack API calls beyond receiving inputs and returning outputs.
+ *
+ * Ported unchanged from the original Deno SDK version
+ * (atlas-test-ticket-scheduling/functions/build_scheduling_link.ts) - this
+ * logic has zero Deno-specific dependencies, so nothing needed to change
+ * beyond the module syntax.
  */
-export const BuildSchedulingLinkDefinition = DefineFunction({
-  callback_id: "build_scheduling_link",
-  title: "Build Atlas scheduling link",
-  description:
-    "Builds the workcell scheduling meeting link for an Atlas test ticket",
-  source_file: "functions/build_scheduling_link.ts",
-  input_parameters: {
-    properties: {
-      test_name: {
-        type: Schema.types.string,
-        description: "Test Name from the ticket form",
-      },
-      station: {
-        type: Schema.types.string,
-        description:
-          '"Station test will be on" form answer (e.g. "beta-0301", "beta-0304")',
-      },
-      workcells_needed: {
-        type: Schema.types.array,
-        items: { type: Schema.types.string },
-        description:
-          '"Which workcells do you need?" form answers (e.g. ["Induct", "WC1"]) — only meaningful when station is the 0304 system; ignored for 0301',
-      },
-      pod_type: {
-        type: Schema.types.array,
-        items: { type: Schema.types.string },
-        description: "Pod Type form answers, used in the meeting subject",
-      },
-      duration_hours: {
-        type: Schema.types.number,
-        description:
-          "Duration (hours) form answer, converted to the meeting's suggested duration in minutes",
-      },
-      test_ticket_url: {
-        type: Schema.types.string,
-        description:
-          'URL of the Test Ticket List record (output of the earlier "add a record" step)',
-      },
-      test_plan_canvas_url: {
-        type: Schema.types.string,
-        description:
-          "URL of the Test Plan Canvas (output of the earlier Canvas-creation step)",
-      },
-    },
-    required: [
-      "test_name",
-      "station",
-      "workcells_needed",
-      "pod_type",
-      "duration_hours",
-      "test_ticket_url",
-      "test_plan_canvas_url",
-    ],
-  },
-  output_parameters: {
-    properties: {
-      scheduling_url: {
-        type: Schema.types.string,
-        description: "The constructed meetings.amazon.com scheduling link",
-      },
-    },
-    required: ["scheduling_url"],
-  },
-});
 
-// The 0301 system is standalone — no individual workcells, so
+// The 0301 system is standalone - no individual workcells, so
 // workcells_needed is irrelevant whenever this station is selected. Kept in
 // the same lookup-table shape as the 0304 system (a single calendar, no
 // workcell breakdown) specifically so a future workcell breakdown for 0301
@@ -83,11 +22,15 @@ const STATION_CALENDARS: Record<string, string> = {
 };
 
 // Only the 0304 system currently has individual workcell breakdowns. "Any 1
-// WC" and "1:1" are deliberately absent — "Any 1 WC" means operators
+// WC" and "1:1" are deliberately absent - "Any 1 WC" means operators
 // self-coordinate and add their own workcell calendar manually (no specific
 // calendar to invite automatically), and "1:1" is just the natural
 // workcells_needed value when station is 0301 (not a real workcell
 // selection), so neither should resolve to an additional calendar.
+//
+// Note the workcell-specific addresses carry a descriptive suffix that the
+// overall-system addresses (0301/0304) don't - confirmed against the real
+// addresses, not assumed from the beta-NNNN pattern alone.
 const WORKCELL_CALENDARS: Record<string, string> = {
   "Induct": "atlas-stow-beta-0305-induct-transfer@amazon.com",
   "WC1": "atlas-stow-beta-0306-WC1@amazon.com",
@@ -96,7 +39,7 @@ const WORKCELL_CALENDARS: Record<string, string> = {
 };
 
 // Matches case-insensitively (and trims whitespace), same reasoning as the
-// Emtech app's getCategoryForRequestType() — a dropdown's exact wording/case
+// Emtech app's getCategoryForRequestType() - a dropdown's exact wording/case
 // shouldn't cause a legitimate value to be rejected as unrecognized.
 function lookupCaseInsensitive(
   table: Record<string, string>,
@@ -115,7 +58,7 @@ function lookupCaseInsensitive(
 //
 // - 0301: that station's calendar alone, regardless of workcells_needed.
 // - 0304: that station's calendar, plus each workcell in workcells_needed
-//   that maps to a specific calendar (Induct/WC1/WC2/WC3) — so the meeting
+//   that maps to a specific calendar (Induct/WC1/WC2/WC3) - so the meeting
 //   always lands on the overall 0304 calendar for tracking, and also on the
 //   specific workcell's calendar(s) when one or more were named.
 export function resolveCalendars(
@@ -150,7 +93,7 @@ export function resolveCalendars(
 
 // NOTE: the exact delimiter meetings.amazon.com expects for multiple
 // participantsByPriority values hasn't been confirmed against the real tool
-// yet — this uses a comma, the most common web convention, but this needs a
+// yet - this uses a comma, the most common web convention, but this needs a
 // live test (a real multi-calendar scheduling link) before trusting it.
 function buildParticipantsParam(calendars: string[]): string {
   return calendars.join(",");
@@ -208,24 +151,3 @@ export function buildSchedulingUrl(inputs: {
     url: `https://meetings.amazon.com/#/create-meeting?&${params.toString()}`,
   };
 }
-
-export default SlackFunction(
-  BuildSchedulingLinkDefinition,
-  ({ inputs }) => {
-    const result = buildSchedulingUrl({
-      testName: inputs.test_name,
-      station: inputs.station,
-      workcellsNeeded: inputs.workcells_needed,
-      podType: inputs.pod_type,
-      durationHours: inputs.duration_hours,
-      testTicketUrl: inputs.test_ticket_url,
-      testPlanCanvasUrl: inputs.test_plan_canvas_url,
-    });
-
-    if ("error" in result) {
-      return { error: result.error };
-    }
-
-    return { outputs: { scheduling_url: result.url } };
-  },
-);

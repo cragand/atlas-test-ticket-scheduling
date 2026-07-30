@@ -1,0 +1,84 @@
+{
+  "display_information": {
+    "name": "Atlas Test Ticket Scheduling",
+    "description": "Custom step for the Atlas Test Ticket Submission workflow that builds the workcell scheduling meeting link"
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": ["app_mentions:read"]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": true,
+    "socket_mode_enabled": true,
+    "function_runtime": "remote"
+  },
+  "functions": {
+    "build_scheduling_link": {
+      "title": "Build Atlas scheduling link",
+      "description": "Builds the workcell scheduling meeting link for an Atlas test ticket",
+      "input_parameters": {
+        "test_name": {
+          "type": "string",
+          "title": "Test Name",
+          "description": "Test Name from the ticket form",
+          "is_required": true,
+          "name": "test_name"
+        },
+        "station": {
+          "type": "string",
+          "title": "Station",
+          "description": "\"Station test will be on\" form answer (e.g. \"beta-0301\", \"beta-0304\")",
+          "is_required": true,
+          "name": "station"
+        },
+        "workcells_needed": {
+          "type": "array",
+          "items": { "type": "string" },
+          "title": "Workcells needed",
+          "description": "\"Which workcells do you need?\" form answers - only meaningful when station is the 0304 system; ignored for 0301",
+          "is_required": true,
+          "name": "workcells_needed"
+        },
+        "pod_type": {
+          "type": "array",
+          "items": { "type": "string" },
+          "title": "Pod Type",
+          "description": "Pod Type form answers, used in the meeting subject",
+          "is_required": true,
+          "name": "pod_type"
+        },
+        "duration_hours": {
+          "type": "number",
+          "title": "Duration (hours)",
+          "description": "Duration (hours) form answer, converted to the meeting's suggested duration in minutes",
+          "is_required": true,
+          "name": "duration_hours"
+        },
+        "test_ticket_url": {
+          "type": "string",
+          "title": "Test Ticket URL",
+          "description": "URL of the Test Ticket List record (output of the earlier \"add a record\" step)",
+          "is_required": true,
+          "name": "test_ticket_url"
+        },
+        "test_plan_canvas_url": {
+          "type": "string",
+          "title": "Test Plan Canvas URL",
+          "description": "URL of the Test Plan Canvas (output of the earlier Canvas-creation step)",
+          "is_required": true,
+          "name": "test_plan_canvas_url"
+        }
+      },
+      "output_parameters": {
+        "scheduling_url": {
+          "type": "string",
+          "title": "Scheduling URL",
+          "description": "The constructed meetings.amazon.com scheduling link",
+          "is_required": true,
+          "name": "scheduling_url"
+        }
+      }
+    }
+  }
+}

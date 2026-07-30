@@ -78,27 +78,103 @@ npm test
 
 ## Building for deployment
 
+Locally (no container):
+
 ```sh
 npm run build   # compiles to dist/
 npm start        # runs the compiled output
 ```
 
-## Deployment (self-hosted, Socket Mode)
+As a container (the `Dockerfile` in this repo, multi-stage — compiles
+TypeScript in a build stage, then copies only the compiled output and
+production dependencies into the runtime image):
 
-Runs as a persistent process — not Slack-hosted. See project notes for the
-AWS hosting plan (ECS/Fargate recommended over EC2 or Lambda — Socket Mode
-needs a long-lived connection, which Lambda's execution model doesn't fit;
-Fargate avoids the OS-patching overhead EC2 would add). Secrets
-(`SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`) belong in AWS Secrets Manager or SSM
-Parameter Store, never hardcoded or committed.
+```sh
+docker build -t atlas-test-ticket-scheduling .
+docker run --env-file .env atlas-test-ticket-scheduling
+```
 
-## App approval at Amazon
+Note: Docker Desktop on a Windows machine may require an organization
+sign-in/license depending on company policy (hit this directly at Amazon —
+Docker Desktop enforced `amazonians` org membership, denied without a paid
+license). This only affects Docker Desktop specifically, not Docker/Docker
+Engine in general — building and pushing the image can be done instead via
+AWS CloudShell (Docker pre-installed, nothing to set up locally), WSL2 with
+Docker Engine installed directly (not Docker Desktop), or AWS CodeBuild, all
+of which avoid the Docker Desktop licensing requirement entirely.
 
-Went through Amazon's OPUS Apps Approval Process (OPAA). One real finding
-from that process: the `commands` scope (rated "2 - Medium" in Amazon's
-internal risk table) was denied at the org-level install step, despite
-documented policy suggesting only High-risk scopes require review in
-practice. Switched to `app_mentions:read` (rated "1 - Low") instead, since
-this function doesn't functionally use the Slack API at all — any scope
-choice is just satisfying Slack's "a bot user needs at least one scope"
-requirement, so the lowest-risk one available is the right pick.
+## Deployment — self-hosted (Socket Mode), not Slack-hosted
+
+Runs as a persistent process on infrastructure we control, since Socket Mode
+requires an app that holds an open, long-lived connection to Slack — the
+opposite of what Slack-hosted next-gen apps provided, and unavailable to us
+anyway since next-gen apps are blocked on Amazon's grid.
+
+### AWS side
+
+- **Compute: ECS on Fargate**, not EC2 or Lambda. Lambda's short-lived,
+  on-demand execution model doesn't fit a process that needs to hold a
+  persistent connection. Fargate avoids EC2's OS-patching overhead.
+- **ECR**: a private repository holding the built image (`docker tag` +
+  `docker push` after building from the `Dockerfile` above).
+- **Secrets Manager** (or SSM Parameter Store): stores `SLACK_BOT_TOKEN` and
+  `SLACK_APP_TOKEN` — referenced by ARN from the task definition, never
+  baked into the image or committed anywhere.
+- **Task Definition**: Fargate launch type, smallest task size (0.25 vCPU /
+  0.5 GB is almost certainly enough), points at the ECR image, wires in the
+  two secrets, and enables `awslogs` logging to a CloudWatch Log Group.
+- **Task execution role**: needs permission to pull from ECR, read the two
+  secrets, and write to the log group — the console's default flow usually
+  generates this correctly. The task role itself (permissions the app needs
+  at runtime) can stay empty, since this app only talks to Slack, not any
+  other AWS service.
+- **Networking**: a public subnet with a security group that has **no
+  inbound rules** and default outbound only. Since Socket Mode never
+  receives inbound traffic, there's no need for a Load Balancer, a public
+  IP, or any inbound rule — genuinely simpler than a typical web service.
+- **ECS Service**: created from the task definition, desired count 1,
+  **no load balancer attached** — without one, ECS tracks health by whether
+  the container process is still running (not an HTTP health check), and
+  restarts it automatically if it crashes. This is the detail that makes a
+  plain ECS service the right fit here, rather than something like AWS App
+  Runner, which expects the container to listen on a port and actively
+  health-checks it — a poor match for a pure outbound-only Socket Mode app.
+- **Updating**: rebuild the image, push a new version to the same ECR repo,
+  then force a new deployment on the ECS service.
+
+### Slack side — sandbox first, then promote to production
+
+The Slack app registration/approval process and the AWS hosting are mostly
+independent — they only connect at one point: whichever Bot Token +
+App-Level Token the running container is given determines which Slack app
+it's acting as. The same image can run against sandbox tokens for testing
+and production tokens later, unchanged.
+
+1. Provision a personal developer sandbox (`/provision` in Slack →
+   "Provision Sandbox with Opus") — self-approved, since you're the admin
+   of your own sandbox.
+2. Create the Slack app in the sandbox, matching `manifest.json`, and get
+   its tokens.
+3. Test everything there first — this is also where the one open question
+   in the code (see below) gets confirmed, risk-free.
+4. Export the sandbox app's manifest as YAML, then import it into the
+   production Amazon grid (targeting the real workspace) via Slack App
+   Config → "Create New App" → "From an app manifest."
+5. Add `opus-amazon-prod` as a collaborator on the new production app —
+   required for Amazon's tooling to evaluate its scopes/endpoints.
+6. Click "Request Install," follow the "Continue Installation" DM from the
+   OPUS Apps Approval Process bot, and fill out the requested forms.
+7. Once approved, get the production app's real tokens and point the
+   running container at those instead of the sandbox ones.
+8. Wire the deployed function into the real "Atlas Test Ticket Submission"
+   workflow — ideally on a duplicate/test copy first, not the live one.
+
+### App approval findings at Amazon (OPUS Apps Approval Process / OPAA)
+
+- The `commands` scope (rated "2 - Medium" in Amazon's internal risk table)
+  was denied at the org-level install step, despite documented policy
+  suggesting only High-risk scopes require review in practice. Switched to
+  `app_mentions:read` (rated "1 - Low") instead, since this function
+  doesn't functionally use the Slack API at all — any scope choice is just
+  satisfying Slack's "a bot user needs at least one scope" requirement, so
+  the lowest-risk one available is the right pick.
